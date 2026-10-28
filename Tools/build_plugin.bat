@@ -24,6 +24,10 @@ copy Sources\backend-cpp\build\bin\Release\*.dll Sources\com.ctytler.dcs.sdPlugi
 :: Remove any prior build of the Plugin:
 echo. && echo *** Removing any previous builds of com.ctytler.dcs.streamDeckPlugin from Release/ ***
 del Release\com.ctytler.dcs.streamDeckPlugin && echo ...Successfully removed
+if exist Release\com.ctytler.dcs.streamDeckPlugin (
+    echo Canceling plugin build because the previous package could not be removed
+    exit /b 1
+)
 
 :: Build the ReactJS user interface:
 cd Sources\frontend-react-js && call npm install && call npm run build
@@ -33,6 +37,16 @@ echo *** React JS build complete, published to Sources/com.ctytler.dcs.sdPlugin/
 :: Build StreamDeck Plugin:
 echo *** Building com.ctytler.dcs.streamDeckPlugin to Release/ *** && echo.
 Tools\DistributionTool.exe -b -i Sources\com.ctytler.dcs.sdPlugin -o Release
+:: This legacy DistributionTool returns 1 even on success; check its output instead.
+if not exist Release\com.ctytler.dcs.streamDeckPlugin (
+    echo Canceling plugin build because DistributionTool did not create the package
+    exit /b 1
+)
+
+:: Normalize ZIP paths and directory attributes for compatibility with 7-Zip:
+echo *** Normalizing ZIP paths and directory attributes ***
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools\normalize_plugin_zip.ps1 -Path Release\com.ctytler.dcs.streamDeckPlugin
+if errorlevel 1 exit /b %errorlevel%
 echo. && echo  *** Build complete *** && echo.
 
 :: Pause for keypress to allow user to view output
