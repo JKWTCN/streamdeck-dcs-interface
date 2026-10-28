@@ -16,7 +16,6 @@
 
 #include "ElgatoSD/EPLJSONUtils.h"
 #include "ElgatoSD/ESDConnectionManager.h"
-#include "SimulatorInterface/SimulatorInterfaceParameters.h"
 #include "StreamdeckContext/BackwardsCompatibilityHandler.h"
 #include "Utilities/JsonReader.h"
 #include "Utilities/LuaReader.h"
@@ -80,26 +79,33 @@ StreamdeckInterface::~StreamdeckInterface()
     }
 }
 
-SimulatorConnectionSettings StreamdeckInterface::get_connection_settings(const json &global_settings)
+SimulatorConnectionSettings StreamdeckInterface::get_connection_settings(const json &global_settings, Protocol protocol)
 {
-    const std::string ip_address_request = EPLJSONUtils::GetStringByName(global_settings, "ip_address");
-    const std::string listener_port_request = EPLJSONUtils::GetStringByName(global_settings, "listener_port");
-    const std::string send_port_request = EPLJSONUtils::GetStringByName(global_settings, "send_port");
-    const std::string multicast_address_request = ""; // TODO: add multicast option to javascript UI.
-    const bool user_settings_valid =
-        (!ip_address_request.empty() && !listener_port_request.empty() && !send_port_request.empty());
+    const bool dcs_bios = protocol == Protocol::DCS_BIOS;
+    SimulatorConnectionSettings connection_settings = dcs_bios
+        ? SimulatorConnectionSettings{"5010", "7778", "127.0.0.1", "239.255.50.10"}
+        : SimulatorConnectionSettings{"1725", "26027", "127.0.0.1", ""};
+    const std::string prefix = dcs_bios ? "dcs_bios_" : "";
 
-    SimulatorConnectionSettings connection_settings;
-    if (user_settings_valid) {
-        connection_settings.rx_port = listener_port_request;
-        connection_settings.tx_port = send_port_request;
-        connection_settings.ip_address = ip_address_request;
-        connection_settings.multicast_address = multicast_address_request;
-    } else {
-        connection_settings.rx_port = DEFAULT_LISTENER_PORT;
-        connection_settings.tx_port = DEFAULT_SEND_PORT;
-        connection_settings.ip_address = DEFAULT_IP_ADDRESS;
-        connection_settings.multicast_address = DEFAULT_MULTICAST_ADDRESS;
+    const auto read_port = [&](const std::string &key, const std::string &fallback) {
+        const std::string port = EPLJSONUtils::GetStringByName(global_settings, key);
+        if (port.empty()) {
+            return fallback;
+        }
+        if (port.size() <= 5 && port.find_first_not_of("0123456789") == std::string::npos &&
+            std::stoi(port) >= 1 && std::stoi(port) <= 65535) {
+            return port;
+        }
+        mConnectionManager->LogMessage("[Plugin] Invalid port for " + key + "; using default " + fallback);
+        return fallback;
+    };
+    connection_settings.rx_port = read_port(prefix + "listener_port", connection_settings.rx_port);
+    connection_settings.tx_port = read_port(prefix + "send_port", connection_settings.tx_port);
+    if (!dcs_bios) {
+        const std::string ip_address = EPLJSONUtils::GetStringByName(global_settings, "ip_address");
+        if (!ip_address.empty()) {
+            connection_settings.ip_address = ip_address;
+        }
     }
     return connection_settings;
 }
@@ -108,15 +114,13 @@ void StreamdeckInterface::DidReceiveGlobalSettings(const json &inPayload)
 {
     json settings;
     EPLJSONUtils::GetObjectByName(inPayload, "settings", settings);
-    // SimulatorConnectionSettings connection_settings = get_connection_settings(settings);
-
-    // TODO: read these in from global settings, always connect to both for now.
     std::unordered_map<Protocol, SimulatorConnectionSettings> connection_settings;
-    connection_settings[Protocol::DCS_BIOS] = {"5010", "7778", "127.0.0.1", "239.255.50.10"};
-    connection_settings[Protocol::DCS_ExportScript] = {"1725", "26027", "127.0.0.1", ""};
+    connection_settings[Protocol::DCS_BIOS] = get_connection_settings(settings, Protocol::DCS_BIOS);
+    connection_settings[Protocol::DCS_ExportScript] = get_connection_settings(settings, Protocol::DCS_ExportScript);
 
     // Create first instance of Simulator Interface only done under DidReceiveGlobalSettings to allow for any stored
     // settings to be used before binding socket to default port values.
+    std::lock_guard<std::mutex> lock(mVisibleContextsMutex);
     for (const auto &protocol : connection_settings) {
         if (!simConnectionManager_.is_connected_with_settings(protocol.first, protocol.second)) {
             try {
@@ -137,17 +141,16 @@ void StreamdeckInterface::UpdateFromGameState()
     //
 
     // Update the Simulator game state in memory, then update each Streamdeck button context.
+    std::lock_guard<std::mutex> lock(mVisibleContextsMutex);
     simConnectionManager_.update_all();
 
     if (mConnectionManager != nullptr) {
-        mVisibleContextsMutex.lock();
         for (auto &context : mVisibleContexts) {
             const auto protocol = context.second.protocol();
             if (simConnectionManager_.is_connected(protocol)) {
                 context.second.updateContextState(simConnectionManager_.get_interface(protocol), mConnectionManager);
             }
         }
-        mVisibleContextsMutex.unlock();
     }
 }
 
@@ -244,6 +247,7 @@ void StreamdeckInterface::SendToPlugin(const std::string &inAction,
     }
 
     if (event == "RequestDcsStateUpdate") {
+        std::lock_guard<std::mutex> lock(mVisibleContextsMutex);
         const auto protocol =
             (inAction == "com.ctytler.dcs.dcs-bios") ? Protocol::DCS_BIOS : Protocol::DCS_ExportScript;
         if (!simConnectionManager_.is_connected(protocol)) {

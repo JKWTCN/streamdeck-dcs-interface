@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import StreamdeckApi, { defaultButtonSettings, defaultGlobalSettings, StreamdeckButtonSettings, StreamdeckCommFns } from './StreamdeckApi';
+import StreamdeckApi, { defaultButtonSettings, defaultGlobalSettings, StreamdeckButtonSettings, StreamdeckCommFns, StreamdeckGlobalSettings } from './StreamdeckApi';
 import { ModuleControlsJson } from '../DcsBios/ControlReferenceInterface';
 
 export interface StreamdeckSocketSettings {
@@ -75,8 +75,9 @@ export function useStreamdeckWebsocket(socketSettings: StreamdeckSocketSettings)
             send('getGlobalSettings', {});
         },
 
-        setGlobalSettings: function (setting: string, value: string | boolean) {
-            const updatedGlobalSettings = Object.assign({}, globalSettings, { [setting]: value });
+        setGlobalSettings: function (setting: string | Partial<StreamdeckGlobalSettings>, value?: string | boolean) {
+            const changes = typeof setting === "string" ? { [setting]: value } : setting;
+            const updatedGlobalSettings = Object.assign({}, globalSettings, changes);
             setGlobalSettingsState(updatedGlobalSettings);
             send('setGlobalSettings', { payload: updatedGlobalSettings });
         },
@@ -150,7 +151,7 @@ export function useStreamdeckWebsocket(socketSettings: StreamdeckSocketSettings)
                 console.debug("Received Button Settings", msg.payload.settings);
                 break;
             case "didReceiveGlobalSettings":
-                setGlobalSettingsState(prevGlobalSettings => Object.assign(prevGlobalSettings, msg.payload.settings));
+                setGlobalSettingsState(prevGlobalSettings => Object.assign({}, prevGlobalSettings, msg.payload.settings));
                 console.debug("Received Global Settings", msg.payload.settings);
                 break;
             case "sendToPropertyInspector":

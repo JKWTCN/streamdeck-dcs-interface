@@ -24,7 +24,7 @@ export interface StreamdeckCommFns {
     // Gets global settings for all buttons of the Streamdeck plugin.
     getGlobalSettings(): void;
     // Sets global settings for all buttons of the Streamdeck plugin.
-    setGlobalSettings(setting: string, value: string | boolean): void;
+    setGlobalSettings(setting: string | Partial<StreamdeckGlobalSettings>, value?: string | boolean): void;
     // Logs a message to the Elgato Streamdeck error log.
     logMessage(message: string): void;
 
@@ -101,6 +101,8 @@ export interface StreamdeckGlobalSettings {
     ip_address: string,
     listener_port: string,
     send_port: string,
+    dcs_bios_listener_port: string,
+    dcs_bios_send_port: string,
     // Control reference query settings.
     last_search_query: string,
     last_selected_module: string,
@@ -112,8 +114,10 @@ export function defaultGlobalSettings(): StreamdeckGlobalSettings {
     return {
         autoOpenConfigureWindow: false,
         ip_address: "",
-        listener_port: "",
-        send_port: "",
+        listener_port: "1725",
+        send_port: "26027",
+        dcs_bios_listener_port: "5010",
+        dcs_bios_send_port: "7778",
         last_search_query: "",
         last_selected_module: "",
         dcs_install_path: "",

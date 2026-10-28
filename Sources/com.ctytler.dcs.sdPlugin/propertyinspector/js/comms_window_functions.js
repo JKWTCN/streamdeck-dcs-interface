@@ -9,6 +9,14 @@ function loaded() {
 
 
 function callbackUpdateConnectionSettings() {
+    for (const id of ["listener_port", "send_port"]) {
+        const input = document.getElementById(id);
+        const valid = /^[0-9]{1,5}$/.test(input.value) && Number(input.value) >= 1 && Number(input.value) <= 65535;
+        input.setCustomValidity(valid ? "" : "Enter a port between 1 and 65535.");
+        if (!input.reportValidity()) {
+            return;
+        }
+    }
     window.opener.global_settings["ip_address"] = document.getElementById("ip_address").value;
     window.opener.global_settings["listener_port"] = document.getElementById("listener_port").value;
     window.opener.global_settings["send_port"] = document.getElementById("send_port").value;

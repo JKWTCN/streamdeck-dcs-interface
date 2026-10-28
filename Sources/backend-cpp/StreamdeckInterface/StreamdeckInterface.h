@@ -72,7 +72,7 @@ class StreamdeckInterface : public ESDBasePlugin
      * @param global_settings Json object of global settings received from Streamdeck.
      * @return SimulatorConnectionSettings
      */
-    SimulatorConnectionSettings get_connection_settings(const json &global_settings);
+    SimulatorConnectionSettings get_connection_settings(const json &global_settings, Protocol protocol);
 
     std::mutex mVisibleContextsMutex;
     std::unordered_map<std::string, StreamdeckContext> mVisibleContexts = {};
